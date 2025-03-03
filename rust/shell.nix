@@ -1,10 +1,6 @@
 { pkgs }:
-
 {
   buildInputs = with pkgs; [
-    firefox
-    geckodriver
-    openssl
-    pkg-config
+    # add your project dependencies here.
   ];
 }

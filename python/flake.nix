@@ -3,7 +3,6 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    agenix.url = "github:ryantm/agenix";
   };
 
   outputs = { self, nixpkgs, agenix }:
@@ -16,19 +15,10 @@
       buildInputs = [
         (pkgs.python3.withPackages (python-pkgs: with python-pkgs; [
           python-lsp-server
-          selenium
+          # add python dependencies here
         ]))
-        pkgs.geckodriver
-        pkgs.firefox
-        agenix.packages.${system}.default
+        # add non-python dependencies here
       ];
-      shellHook = ''
-        if [[ -f /run/secrets/cms-pswd ]]; then
-          export CMS_PSWD=$(cat /run/secrets/cms-pswd)
-        else
-         echo "Secret not found!"
-        fi
-      '';
     };
   };
 }
