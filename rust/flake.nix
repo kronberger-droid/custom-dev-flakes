@@ -1,98 +1,61 @@
 {
-  description = "Rust development environment for multiple projects (impure)";
+  # flake.nix template for Rust projects with Fenix
+  description = "Rust devShell for <project-name>";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Follow nixpkgs unstable for latest packages
+    nixpkgs.url     = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    # Fenix for Rust toolchains
+    fenix.url        = "github:nix-community/fenix";
+    # Optional: rust-overlay for extra targets
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, fenix, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        # Import pkgs with overlays for Fenix and rust-overlay
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ fenix.overlays.default rust-overlay.overlays.default ];
+        };
+        lib = pkgs.lib;
 
-        # List all subdirectories (projects) in the current directory
-        projects = builtins.filter
-          (name: builtins.pathExists (./. + "/${name}/Cargo.toml"))
-          (builtins.attrNames (builtins.readDir ./.));
+        # Define Rust toolchain and analyzer from Fenix
+        stableToolchain = fenix.packages.${system}.complete.toolchain;
+        rustAnalyzer    = fenix.packages.${system}.latest.rust-analyzer;
+      in {
+        # Default devShell for project development
+        devShells.default = pkgs.mkShell {
+          name = "<project-name>-dev-shell";
 
-        # Function to create a dev shell for a given project
-        mkDevShell = project:
-          let
-            # Default to stable Rust if no rust-toolchain.toml exists
-            rustToolchainPath = ./. + "/${project}/rust-toolchain.toml";
-            overrides = if builtins.pathExists rustToolchainPath
-              then builtins.fromTOML (builtins.readFile rustToolchainPath)
-              else { toolchain = { channel = "stable"; }; };
-
-            # Check if the project has a shell.nix file
-            projectShellPath = ./. + "/${project}/shell.nix";
-            projectShell = if builtins.pathExists projectShellPath
-              then import projectShellPath { inherit pkgs; }
-              else { };
-
-            # Merge project-specific dependencies with the default ones
-            buildInputs = (with pkgs; [
-              clang
-              llvmPackages.bintools
-              rustup
-              bacon
-            ]) ++ (projectShell.buildInputs or [ ]);
-          in
-          pkgs.mkShell {
-            inherit buildInputs;
-
-            # Allow impure environment variables
-            RUSTC_VERSION = overrides.toolchain.channel;
-            LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
-
-            shellHook = ''
-              # Initialize rustup if not already initialized
-              if ! rustup toolchain list | grep -q "$RUSTC_VERSION"; then
-                rustup toolchain install $RUSTC_VERSION
-              fi
-              rustup default $RUSTC_VERSION
-
-              # Add Rust binaries to PATH
-              export PATH=$PATH:${pkgs.rustup}/bin
-              export PATH=$PATH:${pkgs.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
-            '' + (projectShell.shellHook or "");
-          };
-
-        # Default dev shell for new projects
-        defaultDevShell = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            clang
-            llvmPackages.bintools
-            rustup
+          buildInputs = with pkgs; lib.flatten [
+            # Core Rust toolchain
+            stableToolchain
+            # IDE support
+            rustAnalyzer
+            # Common Rust utilities
+            cargo-expand
+            # Optional REPL shell
+            nushell
           ];
 
-          # Allow impure environment variables
-          RUSTC_VERSION = "stable";
-          LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
-
+          # Customize shell behavior here
           shellHook = ''
-            # Initialize rustup if not already initialized
-            if ! rustup toolchain list | grep -q "$RUSTC_VERSION"; then
-              rustup toolchain install $RUSTC_VERSION
-            fi
-            rustup default $RUSTC_VERSION
-
-            # Add Rust binaries to PATH
-            export PATH=$PATH:${pkgs.rustup}/bin
-            export PATH=$PATH:${pkgs.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
+            echo "Entering devShell for ${self?self.file?./flake.nix|basename} on ${system}";
+            echo "Rust version: $(rustc --version)";
+            # Keep cargo cache in home
+            export CARGO_HOME="$HOME/.cargo";
+            export RUSTUP_HOME="$HOME/.rustup";
+            mkdir -p "$CARGO_HOME" "$RUSTUP_HOME";
+            # Replace with your preferred shell
+            exec ${pkgs.nushell}/bin/nu --login
           '';
         };
-      in
-      {
-        # Create a dev shell for each project
-        devShells = builtins.listToAttrs (map (project: {
-          name = project;
-          value = mkDevShell project;
-        }) projects) // {
-          # Add a default dev shell for new projects
-          default = defaultDevShell;
-        };
+
+        # Optionally expose a default package
+        defaultPackage = stableToolchain;
       }
     );
 }
