@@ -43,7 +43,6 @@
 
           # Customize shell behavior here
           shellHook = ''
-            echo "Entering devShell for ${self?self.file?./flake.nix|basename} on ${system}";
             echo "Rust version: $(rustc --version)";
             # Keep cargo cache in home
             export CARGO_HOME="$HOME/.cargo";
